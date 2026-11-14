@@ -278,6 +278,12 @@ TOOL_DEFS_BY_NAME: Final[dict[str, ToolDef]] = {tool.name: tool for tool in TOOL
 # --------------------------------------------------------------------------
 _ARTICLES: Final = ("the ", "a ", "an ", "my ", "our ", "your ")
 
+# Space-free name comparison, so a compound split across a word boundary still
+# resolves. The floor keeps unrelated names apart: "Wohnzimmerlicht" and
+# "Schlafzimmerlicht" score about 0.75 and stay unresolved.
+COMPOUND_MIN_PACKED_LENGTH: Final = 6
+COMPOUND_RATIO_FLOOR: Final = 0.9
+
 
 def normalize_name(value: str) -> str:
     """Fold a spoken name into a comparable key."""
@@ -327,6 +333,12 @@ def _score_candidate(query: str, key: str) -> float:
     Deliberately conservative: character similarity only counts when the two
     share at least one word, so "garage door opener" cannot drift onto
     "Front Door" just because both contain "door".
+
+    The exception is the space-free comparison at the end. Names drift across
+    word boundaries when they are spoken, and German compounds make that routine:
+    an entity named "Lichtstreifen" is heard as "Licht Streifen". Comparing the
+    space-free forms makes that drift invisible while still refusing unrelated
+    names, because the bar is high and the strings must be nearly identical.
     """
     if not key:
         return 0.0
@@ -350,6 +362,15 @@ def _score_candidate(query: str, key: str) -> float:
 
     if shared:
         best = max(best, difflib.SequenceMatcher(None, query, key).ratio() * 0.9)
+
+    packed_query = query.replace(" ", "")
+    packed_key = key.replace(" ", "")
+    if packed_query == packed_key:
+        best = max(best, 0.95)
+    elif min(len(packed_query), len(packed_key)) >= COMPOUND_MIN_PACKED_LENGTH:
+        packed_ratio = difflib.SequenceMatcher(None, packed_query, packed_key).ratio()
+        if packed_ratio >= COMPOUND_RATIO_FLOOR:
+            best = max(best, packed_ratio)
 
     return best
 

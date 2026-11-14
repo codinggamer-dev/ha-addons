@@ -155,6 +155,43 @@ def test_ambiguous_names_are_reported():
 
 
 # --------------------------------------------------------------------------
+# Compound names (split or joined by the speech model)
+# --------------------------------------------------------------------------
+def compound_toolset(*names):
+    return build_toolset(
+        [target(name, "light", caps={CAP_STATE, CAP_QUERY}) for name in names]
+    )
+
+
+def test_resolves_a_compound_that_speech_split_in_two():
+    toolset = compound_toolset("Lichtstreifen")
+
+    resolution = toolset.resolve("Licht Streifen", CAP_STATE)
+
+    assert resolution.ok
+    assert resolution.target.name == "Lichtstreifen"
+
+
+def test_resolves_a_joined_name_against_a_split_entity():
+    toolset = compound_toolset("Licht Streifen")
+
+    assert toolset.resolve("Lichtstreifen", CAP_STATE).ok
+
+
+def test_compound_matching_keeps_unrelated_compounds_apart():
+    # Differs only in the prefix, so a loose character comparison would match.
+    toolset = compound_toolset("Wohnzimmerlicht")
+
+    assert not toolset.resolve("Schlafzimmerlicht", CAP_STATE).ok
+
+
+def test_compound_matching_does_not_match_a_different_device():
+    toolset = compound_toolset("Living Room Light")
+
+    assert not toolset.resolve("kitchenlight", CAP_STATE).ok
+
+
+# --------------------------------------------------------------------------
 # Call decoding
 # --------------------------------------------------------------------------
 def test_plan_set_state_on_switch():
