@@ -9,6 +9,6 @@
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/codinggamer-dev/ha-addons/issues",
   "loggers": ["cactus", "custom_components.cactus_home"],
-  "requirements": ["cactus-compute>=4.0"],
-  "version": "1.0.1"
+  "requirements": ["cactus-compute>=4.2"],
+  "version": "1.0.2"
 }

@@ -43,7 +43,7 @@ only name devices that actually exist.
   `conversation` and `stt` platform APIs). Verified against **2026.11.1** on
   Python 3.14.
 * Python **3.11+** (Home Assistant's bundled Python).
-* `cactus-compute>=4.0` (declared in `manifest.json`, installed automatically
+* `cactus-compute>=4.2` (declared in `manifest.json`, installed automatically
   by Home Assistant).
 * Any CPU. ARM64 and x86-64 are both supported by the Cactus runtime.
 
@@ -76,7 +76,7 @@ If your Home Assistant host has no internet access, install the dependency into
 the Home Assistant venv first:
 
 ```bash
-pip install "cactus-compute>=4.0"
+pip install "cactus-compute>=4.2"
 ```
 
 ---
@@ -246,7 +246,7 @@ Assistant's real `conversation` types and skips automatically when
 prints the service call each utterance maps to:
 
 ```bash
-pip install "cactus-compute>=4.0"
+pip install "cactus-compute>=4.2"
 
 python scripts/smoke_needle.py --schemas-only        # no model download
 python scripts/smoke_needle.py                       # downloads engine + weights
@@ -293,7 +293,7 @@ cactus download whistle
 | "I could not find a device called …" | The name was not recognised. Add an alias in the Expose tab, or lower **Confidence needed before acting**. |
 | "I found more than one match for …" | Two entities share a name. Add distinguishing aliases. |
 | Wrong device acts | Check the aliases; the resolver prefers exact matches, then token overlap, then edit distance. |
-| `speech-to-text failed` | The entity's `last_error` attribute names the cause, and the log carries the traceback. The usual reason is that the `whistle.cact` weights never downloaded. The integration loads the speech model during setup, so the cause is logged there and the conversation agent keeps working. The model is retried on the next voice command, so a transient outage heals itself. To fix the cause: restore network access, or pre-download with `cactus download whistle` and point `CACTUS_WHISTLE_WEIGHTS` at the local `whistle.cact`. |
+| `speech-to-text failed` | The entity's `last_error` attribute names the cause, and the log carries the traceback. Home Assistant reduces every speech-to-text failure to this one message, so the reason has to be read from the entity or the log. The entity also reports `engine_kwargs`, the arguments the installed engine accepted: if that list is shorter than `["keywords", "language", "weights"]`, the engine build is older than the code expects and `manifest.json` needs a newer pin. The other usual reason is that the `whistle.cact` weights never downloaded. The model is loaded during setup, the cause is logged there, and a failure never disables the conversation agent. Fix the cause by restoring network access, or pre-download with `cactus download whistle` and point `CACTUS_WHISTLE_WEIGHTS` at the local `whistle.cact`. |
 | Transcription returns empty | Whistle detects silence/noise and returns `""` by design. Check the microphone and the pipeline's VAD settings. |
 | Transcription invents words for music | Expected. Put a VAD or wake word in front of an always-on microphone. |
 | Commands are slow | Lower **Maximum tokens per model turn**, raise **CPU threads**, or reduce **Maximum number of entities**. |

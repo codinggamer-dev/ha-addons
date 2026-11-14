@@ -163,14 +163,25 @@ class CactusWhistleSTTEntity(SpeechToTextEntity):
     ) -> SpeechResult:
         """Buffer the stream, convert it, and transcribe it with Whistle."""
         raw = bytearray()
+        stream_error: str | None = None
         try:
             async for chunk in stream:
                 raw.extend(chunk)
         except Exception as err:  # noqa: BLE001 - the stream is external input
-            _LOGGER.error("Failed to read the audio stream: %s", err)
-            return SpeechResult(text=None, result=SpeechResultState.ERROR)
+            # A stream that ends early is worth transcribing anyway: whatever
+            # arrived is usually enough for a short command.
+            stream_error = f"{type(err).__name__}: {err}"
+            _LOGGER.warning(
+                "Whistle audio stream ended early after %d bytes (%s); "
+                "transcribing what arrived",
+                len(raw),
+                stream_error,
+            )
 
         if not raw:
+            if stream_error is not None:
+                self._record_error(stream_error)
+                return SpeechResult(text=None, result=SpeechResultState.ERROR)
             return SpeechResult(text="", result=SpeechResultState.SUCCESS)
 
         options = self._data.options
@@ -248,5 +259,6 @@ class CactusWhistleSTTEntity(SpeechToTextEntity):
             "weights": self._data.options.get(CONF_WHISTLE_WEIGHTS) or "base whistle.cact",
             "keywords": _parse_keywords(self._data.options.get(CONF_STT_KEYWORDS)),
             "debug_audio_dir": self._data.options.get(CONF_DEBUG_AUDIO_DIR) or None,
+            "engine_kwargs": list(getattr(self._data.transcriber, "last_kwargs", []) or []),
             "last_error": self._last_error,
         }

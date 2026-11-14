@@ -16,6 +16,7 @@ The wrappers exist for three reasons:
 
 from __future__ import annotations
 
+import inspect
 import json
 import logging
 import os
@@ -37,6 +38,14 @@ class CactusRuntimeError(CactusError):
     """The engine loaded but the call failed."""
 
 
+# Optional keyword arguments of ``cactus.transcribe``. Used as the fallback when
+# the installed engine accepts arbitrary keywords, so behaviour matches the
+# documented API on every build.
+_OPTIONAL_TRANSCRIBE_ARGS: frozenset[str] = frozenset(
+    {"language", "keywords", "weights", "word_timestamps"}
+)
+
+
 def _apply_runtime_env(*, telemetry: bool) -> None:
     """Set the documented telemetry opt-outs before the engine is imported."""
     if telemetry:
@@ -54,7 +63,7 @@ def load_cactus(telemetry: bool = False):
     except ImportError as err:  # pragma: no cover - environment dependent
         raise CactusUnavailable(
             "the 'cactus-compute' package is not installed; install it with "
-            "'pip install cactus-compute>=4.0'"
+            "'pip install cactus-compute>=4.2'"
         ) from err
     return cactus
 
@@ -195,6 +204,8 @@ class CactusTranscriber:
         self._cactus: Any | None = None
         self._loaded = False
         self._warmed = False
+        self._params: frozenset[str] | None = None
+        self._last_kwargs: list[str] = []
 
     @property
     def loaded(self) -> bool:
@@ -235,14 +246,8 @@ class CactusTranscriber:
 
             import numpy as np
 
-            assert self._cactus is not None
             try:
-                self._cactus.transcribe(
-                    np.zeros(16000, dtype=np.float32),
-                    language=None,
-                    keywords=None,
-                    weights=self._weights,
-                )
+                self._run_transcribe(np.zeros(16000, dtype=np.float32), None)
             except Exception as err:
                 raise CactusUnavailable(
                     f"the Whistle speech model could not be loaded: {err}"
@@ -250,26 +255,72 @@ class CactusTranscriber:
             self._warmed = True
             self._log.info("Whistle speech model warmed up and ready")
 
-    def transcribe(self, samples, language: str | None = None) -> str:
-        """Transcribe 16 kHz mono float samples and return the text."""
-        self.ensure_loaded()
-        assert self._cactus is not None
-        with self._lock:
-            try:
-                result = self._cactus.transcribe(
-                    samples,
-                    language=language,
-                    keywords=self._keywords,
-                    weights=self._weights,
-                )
-            except Exception as err:
-                raise CactusRuntimeError(f"Whistle transcription failed: {err}") from err
+    def _accepted_kwargs(self) -> frozenset[str]:
+        """Return the optional arguments this engine build actually accepts.
 
+        The keyword arguments of ``transcribe`` have changed between releases.
+        Calling with a keyword the installed build does not know raises
+        ``TypeError`` immediately, which Home Assistant only ever reports to the
+        user as "speech-to-text failed". Introspecting once removes that whole
+        class of failure.
+        """
+        self.ensure_loaded()
+        if self._params is None:
+            assert self._cactus is not None
+            try:
+                parameters = inspect.signature(self._cactus.transcribe).parameters
+            except (TypeError, ValueError):  # pragma: no cover - builtins
+                parameters = {}
+            if any(
+                parameter.kind is inspect.Parameter.VAR_KEYWORD
+                for parameter in parameters.values()
+            ) or not parameters:
+                self._params = _OPTIONAL_TRANSCRIBE_ARGS
+            else:
+                self._params = frozenset(parameters)
+        return self._params
+
+    def _run_transcribe(self, samples, language: str | None) -> str:
+        """One engine call, using only arguments the engine accepts."""
+        assert self._cactus is not None
+        accepted = self._accepted_kwargs()
+        wanted: dict[str, Any] = {
+            "language": language,
+            "keywords": self._keywords,
+            "weights": self._weights,
+        }
+        kwargs = {key: value for key, value in wanted.items() if key in accepted}
+        self._last_kwargs = sorted(kwargs)
+
+        result = self._cactus.transcribe(samples, **kwargs)
         if isinstance(result, Mapping):
             return str(result.get("text") or "").strip()
         if isinstance(result, str):
             return result.strip()
         raise CactusRuntimeError(f"unexpected Whistle response: {result!r}")
+
+    def transcribe(self, samples, language: str | None = None) -> str:
+        """Transcribe 16 kHz mono float samples and return the text."""
+        self.ensure_loaded()
+        with self._lock:
+            try:
+                return self._run_transcribe(samples, language)
+            except CactusRuntimeError:
+                raise
+            except Exception as err:
+                # Report what was attempted: the audio size and the exact
+                # keyword arguments, so an engine mismatch is diagnosable from
+                # one log line instead of a guess.
+                raise CactusRuntimeError(
+                    f"Whistle transcription failed for {samples.size} samples "
+                    f"(language={language!r}, engine accepts "
+                    f"{sorted(self._accepted_kwargs())}): {err}"
+                ) from err
+
+    @property
+    def last_kwargs(self) -> list[str]:
+        """Keyword arguments used by the most recent engine call."""
+        return list(self._last_kwargs)
 
     def close(self) -> None:
         """Drop engine references."""
