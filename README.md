@@ -1,7 +1,7 @@
-# Cactus Home — local voice & automation for Home Assistant
+# Cactus Home: local voice & automation for Home Assistant
 
 A fully native Home Assistant custom integration that runs **Needle 3** as the
-conversation/tool-calling agent and **Whistle** as the speech-to-text engine —
+conversation/tool-calling agent and **Whistle** as the speech-to-text engine:
 both locally, through one Python package (`cactus-compute`).
 
 No cloud calls, no API keys, no YAML. Everything is configured through the
@@ -23,8 +23,8 @@ Home Assistant UI.
 | Speech-to-text | native `stt` platform | `cactus.transcribe` (Whistle) |
 | Conversation agent | `AbstractConversationAgent` | `cactus.Cactus` (Needle 3) |
 
-Because Needle 3 is *grammar-constrained* — every token it emits is checked
-against your tool schemas — a decoded call is always well-formed. Home
+Because Needle 3 is *grammar-constrained* (every token it emits is checked
+against your tool schemas), a decoded call is always well-formed. Home
 Assistant's exposed entities are compiled into those schemas, so the model can
 only name devices that actually exist.
 
@@ -55,14 +55,14 @@ only name devices that actually exist.
 
 ## 3. Installation
 
-### Option A — HACS (recommended)
+### Option A: HACS (recommended)
 
 1. HACS → **Integrations** → ⋮ → **Custom repositories**.
 2. Add this repository URL, category **Integration**.
 3. Install **Cactus Home**, then restart Home Assistant.
 4. **Settings → Devices & Services → Add Integration → Cactus Home**.
 
-### Option B — manual
+### Option B: manual
 
 ```bash
 git clone <this-repo> /tmp/cactus-home
@@ -129,7 +129,7 @@ enabled (the default), the agent can only see entities you have exposed:
 
 ## 5. What it understands
 
-Tool count is deliberately small — Needle 3 reads the whole toolset as part of
+Tool count is deliberately small: Needle 3 reads the whole toolset as part of
 its prompt and accuracy drops as toolsets grow.
 
 | Tool | Arguments | Home Assistant service |
@@ -144,7 +144,7 @@ its prompt and accuracy drops as toolsets grow.
 | `control_cover` | `device`, `state` = `open`/`close`/`stop` | `cover.open_cover` / `.close_cover` / `.stop_cover` |
 | `activate_scene` | `scene` | `scene.turn_on` |
 | `run_script` | `script` | `script.turn_on` |
-| `get_state` | `device` | no service — reads the state and speaks it |
+| `get_state` | `device` | no service, reads the state and speaks it |
 
 Only tools with at least one eligible entity are emitted, so a home with no
 locks never sees `lock_unlock`.
@@ -152,7 +152,7 @@ locks never sees `lock_unlock`.
 ### Groups come for free
 
 For every area/domain with two or more members, the integration synthesises a
-group target — `Kitchen lights`, `lights in Kitchen` — plus a global
+group target (`Kitchen lights`, `lights in Kitchen`) plus a global
 `All lights`. Groups are real targets with the **intersection** of their
 members' capabilities, so "turn off the kitchen lights" resolves to one
 deterministic list of entity ids instead of a guess.
@@ -199,7 +199,10 @@ custom_components/cactus_home/
 ├── audio.py           # pure logic: PCM → 16 kHz mono float32
 ├── manifest.json
 ├── strings.json
-└── translations/en.json
+├── translations/en.json
+└── brand/
+    ├── icon.png       # 256x256 integration icon
+    └── icon@2x.png    # 512x512
 tests/                 # pure logic, plus HA-dependent tests that skip without HA
 scripts/smoke_needle.py
 .github/workflows/ci.yml
@@ -290,8 +293,9 @@ cactus download whistle
 | "I could not find a device called …" | The name was not recognised. Add an alias in the Expose tab, or lower **Confidence needed before acting**. |
 | "I found more than one match for …" | Two entities share a name. Add distinguishing aliases. |
 | Wrong device acts | Check the aliases; the resolver prefers exact matches, then token overlap, then edit distance. |
+| `speech-to-text failed` | The entity's `last_error` attribute names the cause, and the log carries the traceback. The usual reason is that the `whistle.cact` weights never downloaded. The integration loads the speech model during setup, so the cause is logged there and the conversation agent keeps working. The model is retried on the next voice command, so a transient outage heals itself. To fix the cause: restore network access, or pre-download with `cactus download whistle` and point `CACTUS_WHISTLE_WEIGHTS` at the local `whistle.cact`. |
 | Transcription returns empty | Whistle detects silence/noise and returns `""` by design. Check the microphone and the pipeline's VAD settings. |
-| Transcription invents words for music | Expected — put a VAD or wake word in front of an always-on microphone. |
+| Transcription invents words for music | Expected. Put a VAD or wake word in front of an always-on microphone. |
 | Commands are slow | Lower **Maximum tokens per model turn**, raise **CPU threads**, or reduce **Maximum number of entities**. |
 | Model misses a command it should know | Likely fit, not a bug: Needle 3's base weights do not pass every vendor acceptance suite. Fine-tune it (see below) or trim the toolset. |
 
@@ -318,7 +322,7 @@ Inference is local. Audio never leaves the machine. When **Allow anonymous
 Cactus usage telemetry** is off (the default), the integration sets
 `CACTUS_TELEMETRY=0`, `NEEDLE_TELEMETRY=0` and `CACTUS_DO_NOT_TRACK=1` before
 the engine is imported. Cactus Compute's telemetry is documented as function
-name, package version, OS and a random install id — never prompts, outputs or
+name, package version, OS and a random install id, never prompts, outputs or
 audio.
 
 ---
@@ -328,7 +332,7 @@ audio.
 * Needle 3 has **no tool-retrieval head**: the whole toolset is part of the
   prompt, so very large homes are capped and enums fall back to free-text
   names past `max_enum_names`.
-* No free-text conversation. Off-topic requests are refused — this is a device
+* No free-text conversation. Off-topic requests are refused: this is a device
   controller, not a chatbot, and Needle 3 generates no free text.
 * Only domains in the enabled set are controllable. Adding a domain means
   adding a service mapping to `PLAN` in `tools.py`.
@@ -340,8 +344,8 @@ audio.
 
 ## 11. Publishing checklist
 
-This repository is laid out the way HACS expects — `hacs.json` plus
-`custom_components/cactus_home/` at the root — and is already live at
+This repository is laid out the way HACS expects (`hacs.json` plus
+`custom_components/cactus_home/` at the root) and is already live at
 <https://github.com/codinggamer-dev/ha-addons> with a public repo, description,
 topics and a `v1.0.0` release.
 
@@ -372,4 +376,4 @@ git push                                   # works while the repo-local credenti
 
 ## License
 
-MIT — see `LICENSE`. `cactus-compute` itself is Apache-2.0.
+MIT. See `LICENSE`. `cactus-compute` itself is Apache-2.0.

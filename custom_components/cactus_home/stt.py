@@ -117,6 +117,7 @@ class CactusWhistleSTTEntity(SpeechToTextEntity):
     def __init__(self, entry: ConfigEntry, data: CactusHomeData) -> None:
         self._entry = entry
         self._data = data
+        self._last_error: str | None = None
         self._attr_unique_id = f"{entry.entry_id}_{MODEL_WHISTLE.lower()}"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.entry_id)},
@@ -200,11 +201,20 @@ class CactusWhistleSTTEntity(SpeechToTextEntity):
                 transcriber.transcribe, samples, language
             )
         except CactusError as err:
-            _LOGGER.error("Whistle transcription failed: %s", err)
+            self._record_error(str(err))
+            _LOGGER.error(
+                "Whistle transcription failed for a %.1f second clip: %s",
+                samples.size / 16000,
+                err,
+                exc_info=True,
+            )
             return SpeechResult(text=None, result=SpeechResultState.ERROR)
-        except Exception:  # noqa: BLE001 - never raise into the pipeline
+        except Exception as err:  # noqa: BLE001 - never raise into the pipeline
+            self._record_error(f"{type(err).__name__}: {err}")
             _LOGGER.exception("Unexpected Whistle failure")
             return SpeechResult(text=None, result=SpeechResultState.ERROR)
+
+        self._record_error(None)
 
         if not text:
             _LOGGER.debug("Whistle returned no speech for %s", metadata.language)
@@ -219,11 +229,24 @@ class CactusWhistleSTTEntity(SpeechToTextEntity):
             return str(configured)
         return _base_language(metadata_language)
 
+    def _record_error(self, message: str | None) -> None:
+        """Keep the last failure on the entity so the UI can show it.
+
+        Home Assistant reduces any STT failure to the same "speech-to-text
+        failed" reply, so the real reason has to be surfaced somewhere visible.
+        """
+        self._last_error = message
+        try:
+            self.async_write_ha_state()
+        except Exception:  # noqa: BLE001 - the entity may not be added yet
+            pass
+
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Expose the active configuration for troubleshooting."""
+        """Expose the active configuration and the last failure."""
         return {
             "weights": self._data.options.get(CONF_WHISTLE_WEIGHTS) or "base whistle.cact",
             "keywords": _parse_keywords(self._data.options.get(CONF_STT_KEYWORDS)),
             "debug_audio_dir": self._data.options.get(CONF_DEBUG_AUDIO_DIR) or None,
+            "last_error": self._last_error,
         }

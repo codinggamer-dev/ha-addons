@@ -99,10 +99,24 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     try:
         if options[CONF_ENABLE_CONVERSATION]:
             await hass.async_add_executor_job(runtime.ensure_loaded)
-        if options[CONF_ENABLE_STT]:
-            await hass.async_add_executor_job(transcriber.ensure_loaded)
     except CactusUnavailable as err:
         raise ConfigEntryNotReady(str(err)) from err
+
+    if options[CONF_ENABLE_STT]:
+        # Warm the speech model so a failed weights download is logged with its
+        # cause at setup time. The failure is deliberately not raised: a broken
+        # speech model must not disable a working conversation agent. The
+        # weights are retried on the next voice command.
+        try:
+            await hass.async_add_executor_job(transcriber.warm_up)
+        except CactusUnavailable as err:
+            _LOGGER.error(
+                "Cactus speech-to-text is unavailable: %s. The conversation agent still "
+                "works. Restore network access so whistle.cact can download, or set "
+                "CACTUS_WHISTLE_WEIGHTS to a local copy. The model is retried on the "
+                "next voice command.",
+                err,
+            )
 
     data = CactusHomeData(options=options, runtime=runtime, transcriber=transcriber)
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = data

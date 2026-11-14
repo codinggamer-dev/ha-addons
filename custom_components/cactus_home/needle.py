@@ -194,6 +194,7 @@ class CactusTranscriber:
         self._lock = threading.RLock()
         self._cactus: Any | None = None
         self._loaded = False
+        self._warmed = False
 
     @property
     def loaded(self) -> bool:
@@ -216,6 +217,38 @@ class CactusTranscriber:
             self._cactus = cactus
             self._loaded = True
             self._log.info("Cactus runtime ready (Whistle)")
+
+    def warm_up(self) -> None:
+        """Load the speech weights and run one inference pass.
+
+        Called during config entry setup. Without it the weights load lazily on
+        the first spoken command, so a failed download or a broken install
+        reaches the user as a bare "speech-to-text failed" instead of a setup
+        error that names the cause.
+        """
+        self.ensure_loaded()
+        if self._warmed:
+            return
+        with self._lock:
+            if self._warmed:
+                return
+
+            import numpy as np
+
+            assert self._cactus is not None
+            try:
+                self._cactus.transcribe(
+                    np.zeros(16000, dtype=np.float32),
+                    language=None,
+                    keywords=None,
+                    weights=self._weights,
+                )
+            except Exception as err:
+                raise CactusUnavailable(
+                    f"the Whistle speech model could not be loaded: {err}"
+                ) from err
+            self._warmed = True
+            self._log.info("Whistle speech model warmed up and ready")
 
     def transcribe(self, samples, language: str | None = None) -> str:
         """Transcribe 16 kHz mono float samples and return the text."""
@@ -243,6 +276,7 @@ class CactusTranscriber:
         with self._lock:
             self._cactus = None
             self._loaded = False
+            self._warmed = False
 
 
 def toolset_signature(schemas: Sequence[Mapping[str, Any]]) -> str:

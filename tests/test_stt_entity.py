@@ -119,3 +119,19 @@ def test_debug_dump_swallows_io_errors(tmp_path):
             FakeHass(), np.zeros(10, dtype=np.float32), str(blocker / "nested")
         )
     )
+
+
+def test_entity_surfaces_the_last_error():
+    entity = make_entity()
+
+    assert entity.extra_state_attributes["last_error"] is None
+
+    entity._record_error("Whistle speech model could not be loaded")
+
+    assert entity.extra_state_attributes["last_error"] == (
+        "Whistle speech model could not be loaded"
+    )
+
+    entity._record_error(None)
+
+    assert entity.extra_state_attributes["last_error"] is None
