@@ -18,7 +18,7 @@ def pcm16(values):
 
 
 def test_decodes_signed_16_bit_mono():
-    samples = pcm_to_float32(pcm16([0, 16384, -16384, 32767]), sample_width=16, channels=1, sample_rate=16000)
+    samples = pcm_to_float32(pcm16([0, 16384, -16384, 32767]), bit_depth=16, channels=1, sample_rate=16000)
     assert samples.dtype == np.float32
     assert samples[0] == pytest.approx(0.0)
     assert samples[1] == pytest.approx(0.5)
@@ -28,13 +28,13 @@ def test_decodes_signed_16_bit_mono():
 
 def test_folds_stereo_to_mono():
     interleaved = pcm16([16384, -16384, 0, 0])
-    samples = pcm_to_float32(interleaved, sample_width=16, channels=2, sample_rate=16000)
+    samples = pcm_to_float32(interleaved, bit_depth=16, channels=2, sample_rate=16000)
     assert samples.shape == (2,)
     assert samples[0] == pytest.approx(0.0)
 
 
 def test_decodes_unsigned_8_bit():
-    samples = pcm_to_float32(bytes([128, 255, 0]), sample_width=8, channels=1, sample_rate=16000)
+    samples = pcm_to_float32(bytes([128, 255, 0]), bit_depth=8, channels=1, sample_rate=16000)
     assert samples[0] == pytest.approx(0.0)
     assert samples[1] == pytest.approx(1.0, abs=1e-2)
     assert samples[2] == pytest.approx(-1.0, abs=1e-2)
@@ -42,7 +42,7 @@ def test_decodes_unsigned_8_bit():
 
 def test_decodes_24_bit():
     raw = b"\x00\x00\x00" + b"\xff\xff\x7f" + b"\x00\x00\x80"
-    samples = pcm_to_float32(raw, sample_width=24, channels=1, sample_rate=16000)
+    samples = pcm_to_float32(raw, bit_depth=24, channels=1, sample_rate=16000)
     assert samples[0] == pytest.approx(0.0)
     assert samples[1] == pytest.approx(1.0, abs=1e-4)
     assert samples[2] == pytest.approx(-1.0, abs=1e-4)
@@ -50,12 +50,12 @@ def test_decodes_24_bit():
 
 def test_empty_stream_raises():
     with pytest.raises(AudioFormatError):
-        pcm_to_float32(b"", sample_width=16, channels=1, sample_rate=16000)
+        pcm_to_float32(b"", bit_depth=16, channels=1, sample_rate=16000)
 
 
 def test_unsupported_width_raises():
     with pytest.raises(AudioFormatError):
-        pcm_to_float32(b"\x00\x00", sample_width=12, channels=1, sample_rate=16000)
+        pcm_to_float32(b"\x00\x00", bit_depth=12, channels=1, sample_rate=16000)
 
 
 def test_resample_changes_length():
@@ -71,6 +71,6 @@ def test_resample_is_a_noop_at_the_target_rate():
 
 def test_full_pipeline_from_8k_stereo():
     frames = pcm16([1000, 2000] * 8000)
-    samples = to_whistle_samples(frames, sample_width=16, channels=2, sample_rate=8000)
+    samples = to_whistle_samples(frames, bit_depth=16, channels=2, sample_rate=8000)
     assert samples.dtype == np.float32
     assert samples.shape[0] == pytest.approx(16000, abs=4)

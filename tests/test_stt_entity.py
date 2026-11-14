@@ -39,11 +39,97 @@ class FakeEntry:
     title = "Cactus Home"
 
 
-def make_entity(options=None):
+class FakeTranscriber:
+    """Records the samples the entity hands to the engine."""
+
+    def __init__(self, text="understood"):
+        self.text = text
+        self.received = None
+        self.languages: list[str | None] = []
+
+    def transcribe(self, samples, language=None):
+        self.received = samples
+        self.languages.append(language)
+        return self.text
+
+
+def make_entity(options=None, transcriber=None):
     data = CactusHomeData(
-        options=dict(options or {}), runtime=CactusTextAgent(), transcriber=None
+        options=dict(options or {}),
+        runtime=CactusTextAgent(),
+        transcriber=transcriber,
     )
-    return CactusWhistleSTTEntity(FakeEntry(), data)
+    entity = CactusWhistleSTTEntity(FakeEntry(), data)
+    entity.hass = FakeHass()
+    return entity
+
+
+def metadata(language="en", bit_rate=16, sample_rate=16000, channel=1):
+    return stt_component.SpeechMetadata(
+        language=language,
+        format=stt_component.AudioFormats.WAV,
+        codec=stt_component.AudioCodecs.PCM,
+        bit_rate=stt_component.AudioBitRates(bit_rate),
+        sample_rate=stt_component.AudioSampleRates(sample_rate),
+        channel=stt_component.AudioChannels(channel),
+    )
+
+
+def pcm16_bytes(*values):
+    out = bytearray()
+    for value in values:
+        out += int(value).to_bytes(2, "little", signed=True)
+    return bytes(out)
+
+
+def test_entity_decodes_the_metadata_format_before_transcribing():
+    """Regression: bit_rate is bits, not bytes.
+
+    Passing ``bit_rate // 8`` to the decoder made every single command fail
+    with a decode error and the bare "speech-to-text failed" reply, because the
+    decoder compares against bit depths.
+    """
+    transcriber = FakeTranscriber()
+    entity = make_entity(transcriber=transcriber)
+
+    async def stream():
+        yield pcm16_bytes(0, 16384, -16384, 32767)
+
+    result = asyncio.run(entity.async_process_audio_stream(metadata(), stream()))
+
+    assert result.result == stt_component.SpeechResultState.SUCCESS
+    assert result.text == "understood"
+    assert transcriber.received is not None
+    assert transcriber.received.shape == (4,)
+    assert transcriber.received[0] == pytest.approx(0.0)
+    assert transcriber.received[1] == pytest.approx(0.5)
+    assert transcriber.received[3] == pytest.approx(1.0, abs=1e-4)
+    assert entity._last_error is None
+
+
+def test_entity_records_a_decode_failure(monkeypatch):
+    """A decode failure must be visible, not silent.
+
+    The decode branch was once the only error path that left ``last_error``
+    null, which is what made the original failure impossible to diagnose.
+    """
+    import custom_components.cactus_home.stt as stt_module
+    from custom_components.cactus_home.audio import AudioFormatError
+
+    def boom(*args, **kwargs):
+        raise AudioFormatError("simulated decode failure")
+
+    monkeypatch.setattr(stt_module, "to_whistle_samples", boom)
+
+    entity = make_entity(transcriber=FakeTranscriber())
+
+    async def stream():
+        yield pcm16_bytes(0, 1)
+
+    result = asyncio.run(entity.async_process_audio_stream(metadata(), stream()))
+
+    assert result.result == stt_component.SpeechResultState.ERROR
+    assert entity.extra_state_attributes["last_error"] == "simulated decode failure"
 
 
 @pytest.mark.parametrize(

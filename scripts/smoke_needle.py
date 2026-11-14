@@ -190,7 +190,7 @@ def transcribe_file(path: str, language: str | None) -> None:
         rate = handle.getframerate()
         frames = handle.readframes(handle.getnframes())
     samples = audio.to_whistle_samples(
-        frames, sample_width=width * 8, channels=channels, sample_rate=rate
+        frames, bit_depth=width * 8, channels=channels, sample_rate=rate
     )
     print(f"  audio: {channels}ch {width * 8}bit {rate}Hz -> {samples.shape[0]} samples @16kHz")
     print(f"  text: {transcriber.transcribe(samples, language=language)!r}")

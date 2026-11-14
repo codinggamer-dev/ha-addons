@@ -190,12 +190,22 @@ class CactusWhistleSTTEntity(SpeechToTextEntity):
         try:
             samples = to_whistle_samples(
                 bytes(raw),
-                sample_width=int(metadata.bit_rate) // 8,
+                # metadata.bit_rate is bits per sample, which is what the
+                # decoder wants. Dividing by 8 here was the bug that made every
+                # command fail with "speech-to-text failed".
+                bit_depth=int(metadata.bit_rate),
                 channels=int(metadata.channel),
                 sample_rate=int(metadata.sample_rate),
             )
         except AudioFormatError as err:
-            _LOGGER.error("Could not decode the audio stream: %s", err)
+            self._record_error(str(err))
+            _LOGGER.error(
+                "Could not decode the audio stream (%d bytes, %s): %s",
+                len(raw),
+                metadata,
+                err,
+                exc_info=True,
+            )
             return SpeechResult(text=None, result=SpeechResultState.ERROR)
 
         if samples.size == 0:

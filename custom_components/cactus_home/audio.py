@@ -29,16 +29,18 @@ class AudioFormatError(ValueError):
 def pcm_to_float32(
     data: bytes,
     *,
-    sample_width: int,
+    bit_depth: int,
     channels: int,
     sample_rate: int,
 ) -> np.ndarray:
     """Decode interleaved little-endian PCM bytes into ``float32`` in [-1, 1].
 
-    ``sample_width`` is the container's bit depth (8, 16, 24 or 32). 32-bit
-    input is treated as signed integer PCM, which is what Home Assistant
-    emits; signed 24-bit is unpacked manually because numpy has no native
-    three-byte integer type.
+    ``bit_depth`` is bits per sample: 8, 16, 24 or 32. It is deliberately not
+    named ``sample_width``, because that name conventionally means bytes (as in
+    ``wave.getsampwidth()``) and mixing the two units silently rejects 16-bit
+    audio. 32-bit input is treated as signed integer PCM, which is what Home
+    Assistant emits; signed 24-bit is unpacked manually because numpy has no
+    native three-byte integer type.
     """
     if not data:
         raise AudioFormatError("empty audio stream")
@@ -47,30 +49,31 @@ def pcm_to_float32(
     if sample_rate < 1:
         raise AudioFormatError(f"invalid sample rate {sample_rate}")
 
-    if sample_width == 8:
+    if bit_depth == 8:
         # 8-bit PCM in Home Assistant is unsigned.
         samples = (np.frombuffer(data, dtype=np.uint8).astype(np.float32) - 128.0) / 128.0
-    elif sample_width == 16:
+    elif bit_depth == 16:
         if len(data) % 2:
             data = data[:-1]
         samples = np.frombuffer(data, dtype="<i2").astype(np.float32) / 32768.0
-    elif sample_width == 24:
+    elif bit_depth == 24:
         raw = np.frombuffer(data, dtype=np.uint8)
         raw = raw[: len(raw) - (len(raw) % 3)]
         triples = raw.reshape(-1, 3).astype(np.int32)
         # Little-endian sign extension: shift the top byte's sign bit down.
         values = (triples[:, 0] | (triples[:, 1] << 8) | (triples[:, 2] << 16)) << 8
         samples = values.astype(np.float32) / 2147483648.0
-    elif sample_width == 32:
+    elif bit_depth == 32:
         if len(data) % 4:
             data = data[: len(data) - (len(data) % 4)]
         samples = np.frombuffer(data, dtype="<i4").astype(np.float32) / 2147483648.0
     else:
-        raise AudioFormatError(f"unsupported sample width {sample_width}")
+        raise AudioFormatError(f"unsupported sample bit depth {bit_depth}")
 
     if channels > 1:
-        frames = samples.reshape(-1, channels)
-        samples = frames.mean(axis=1)
+        # Drop a trailing partial frame so reshape cannot fail on odd input.
+        samples = samples[: samples.size - (samples.size % channels)]
+        samples = samples.reshape(-1, channels).mean(axis=1)
 
     return np.ascontiguousarray(samples, dtype=np.float32)
 
@@ -95,13 +98,16 @@ def resample(samples: np.ndarray, source_rate: int, target_rate: int = _WHISTLE_
 def to_whistle_samples(
     data: bytes,
     *,
-    sample_width: int,
+    bit_depth: int,
     channels: int,
     sample_rate: int,
 ) -> np.ndarray:
-    """Full decode pipeline used by the STT entity."""
+    """Full decode pipeline used by the STT entity.
+
+    ``bit_depth`` is bits per sample (8, 16, 24 or 32), not bytes.
+    """
     samples = pcm_to_float32(
-        data, sample_width=sample_width, channels=channels, sample_rate=sample_rate
+        data, bit_depth=bit_depth, channels=channels, sample_rate=sample_rate
     )
     return resample(samples, source_rate=sample_rate, target_rate=_WHISTLE_SAMPLE_RATE)
 
