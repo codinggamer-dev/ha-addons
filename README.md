@@ -340,31 +340,35 @@ audio.
 
 ## 11. Publishing checklist
 
-This repository is already laid out the way HACS expects: `hacs.json` plus
-`custom_components/cactus_home/` at the root. Before pushing it public:
+This repository is laid out the way HACS expects — `hacs.json` plus
+`custom_components/cactus_home/` at the root — and is already live at
+<https://github.com/codinggamer-dev/ha-addons> with a public repo, description,
+topics and a `v1.0.0` release.
 
-- [ ] Add a GitHub **description** and **topics** (e.g. `home-assistant`,
-      `hacs`, `cactus`, `needle`, `local-llm`, `voice-assistant`). HACS reads
-      the description and the topics help discovery.
-- [ ] Set `codeowners` in `custom_components/cactus_home/manifest.json` to your
-      GitHub handle.
-- [ ] Point `documentation` and `issue_tracker` in `manifest.json` at this repo
-      (they currently point at Cactus Compute's own repository).
-- [ ] Add a GitHub **release** tagged `v1.0.0`. HACS reads the latest release
-      tag for the version it shows; tags alone are not enough.
-- [ ] Confirm the bundled `.github/workflows/ci.yml` is green (it runs compile,
-      pyflakes, JSON validation and the test suite).
+Steps that still need doing when you next touch the repo:
+
 - [ ] Add a screenshot of the config flow to the README.
+- [ ] Bump `version` in `custom_components/cactus_home/manifest.json` and cut a
+      new GitHub release for any user-visible change. HACS reads the latest
+      release tag as the version it shows; a tag alone is not enough.
 
-Everything above is enough to add the repository to HACS as a **custom
-repository**. Submitting it for inclusion in the HACS store (the default
-repositories list) has extra rules — a
+Submitting the repository for inclusion in the HACS store (the default
+repositories list) has extra requirements beyond a custom repository: a
 [brand icon](https://github.com/home-assistant/brands), the
 [HACS Action](https://github.com/hacs/action) and
 [hassfest](https://github.com/home-assistant/actions#hassfest) passing with no
-ignores, and a PR to
-[hacs/default](https://github.com/hacs/default). The `docs`, `issue_tracker`
-and `codeowners` fields above must be correct before that review will pass.
+ignores, and a PR to [hacs/default](https://github.com/hacs/default). Add those
+workflows to `.github/workflows/` only when you are ready for that review.
+
+### Ongoing pushes
+
+`gh` is installed at `~/.local/bin/gh` and authenticated as `codinggamer-dev`.
+Send CI a green build before tagging:
+
+```bash
+pytest -q
+git push                                   # works while the repo-local credential helper is set
+```
 
 ## License
 

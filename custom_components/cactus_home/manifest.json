@@ -1,13 +1,13 @@
 {
   "domain": "cactus_home",
   "name": "Cactus Home",
-  "codeowners": [],
+  "codeowners": ["@codinggamer-dev"],
   "config_flow": true,
   "dependencies": ["conversation", "stt"],
-  "documentation": "https://github.com/cactus-compute/cactus",
+  "documentation": "https://github.com/codinggamer-dev/ha-addons",
   "integration_type": "service",
   "iot_class": "local_polling",
-  "issue_tracker": "https://github.com/cactus-compute/cactus/issues",
+  "issue_tracker": "https://github.com/codinggamer-dev/ha-addons/issues",
   "loggers": ["cactus", "custom_components.cactus_home"],
   "requirements": ["cactus-compute>=4.0"],
   "version": "1.0.0"
