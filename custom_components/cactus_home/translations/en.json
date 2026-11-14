@@ -1,0 +1,72 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Cactus Home",
+        "description": "Run Needle 3 as a local conversation agent and Whistle as a local speech-to-text engine. The engine and model weights are downloaded and cached on first setup.",
+        "data": {
+          "name": "Name",
+          "enable_conversation": "Enable the Needle 3 conversation agent",
+          "enable_stt": "Enable the Whistle speech-to-text engine",
+          "assist_only": "Only control entities exposed to Assist",
+          "enabled_domains": "Entity domains to expose as tools",
+          "exclude_entities": "Entities to never expose (comma separated)",
+          "needle_weights": "Path to a tuned Needle .cact archive (optional)",
+          "whistle_weights": "Path to a tuned Whistle .cact archive (optional)",
+          "language": "Language",
+          "min_confidence": "Confidence needed before acting without asking",
+          "max_steps": "Maximum tool-calling steps per request",
+          "max_new_tokens": "Maximum tokens per model turn",
+          "max_targets": "Maximum number of entities compiled into tools",
+          "max_enum_names": "Maximum names listed per tool (0 disables name enums)",
+          "stt_keywords": "Words and names to favour when transcribing (comma separated)",
+          "debug_audio_dir": "Directory to save the last audio clip to, for debugging (optional)",
+          "threads": "CPU threads for the model (0 = all cores)",
+          "telemetry": "Allow anonymous Cactus usage telemetry",
+          "target_cache_ttl": "Seconds to cache the entity/tool snapshot"
+        }
+      }
+    },
+    "error": {
+      "nothing_enabled": "Enable at least one of the conversation agent or the speech-to-text engine.",
+      "weights_not_found": "That file does not exist.",
+      "cannot_connect": "The Cactus engine could not be started."
+    },
+    "abort": {
+      "already_configured": "Cactus Home is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Cactus Home options",
+        "description": "Tune how Needle 3 turns your exposed entities into tools, and how Whistle transcribes audio.",
+        "data": {
+          "name": "Name",
+          "enable_conversation": "Enable the Needle 3 conversation agent",
+          "enable_stt": "Enable the Whistle speech-to-text engine",
+          "assist_only": "Only control entities exposed to Assist",
+          "enabled_domains": "Entity domains to expose as tools",
+          "exclude_entities": "Entities to never expose (comma separated)",
+          "needle_weights": "Path to a tuned Needle .cact archive (optional)",
+          "whistle_weights": "Path to a tuned Whistle .cact archive (optional)",
+          "language": "Language",
+          "min_confidence": "Confidence needed before acting without asking",
+          "max_steps": "Maximum tool-calling steps per request",
+          "max_new_tokens": "Maximum tokens per model turn",
+          "max_targets": "Maximum number of entities compiled into tools",
+          "max_enum_names": "Maximum names listed per tool (0 disables name enums)",
+          "stt_keywords": "Words and names to favour when transcribing (comma separated)",
+          "debug_audio_dir": "Directory to save the last audio clip to, for debugging (optional)",
+          "threads": "CPU threads for the model (0 = all cores)",
+          "telemetry": "Allow anonymous Cactus usage telemetry",
+          "target_cache_ttl": "Seconds to cache the entity/tool snapshot"
+        }
+      }
+    },
+    "error": {
+      "nothing_enabled": "Enable at least one of the conversation agent or the speech-to-text engine.",
+      "weights_not_found": "That file does not exist."
+    }
+  }
+}

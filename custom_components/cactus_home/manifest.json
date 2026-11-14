@@ -1,0 +1,14 @@
+{
+  "domain": "cactus_home",
+  "name": "Cactus Home",
+  "codeowners": [],
+  "config_flow": true,
+  "dependencies": ["conversation", "stt"],
+  "documentation": "https://github.com/cactus-compute/cactus",
+  "integration_type": "service",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/cactus-compute/cactus/issues",
+  "loggers": ["cactus", "custom_components.cactus_home"],
+  "requirements": ["cactus-compute>=4.0"],
+  "version": "1.0.0"
+}
