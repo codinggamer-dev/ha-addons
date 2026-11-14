@@ -14,6 +14,12 @@ Safety: a bare article such as "ein" or "one" is left alone, because "ein Licht"
 means "a light", not "one light". A word is only converted on its own when it is
 unambiguous ("eins", "fünfzig", "eighty"), when it forms a compound, or when a
 quantity word follows it ("Prozent", "Grad", "degrees").
+
+One asymmetry is deliberate. German separates the article "ein" from the numeral
+"eins", so "eins" converts on its own. English uses "one" for both the numeral
+and the pronoun, so a bare "one" stays a word and only converts with a unit word
+("one percent") or another number beside it ("twenty one"). Treating it as
+unambiguous would turn "one of the lights" into "1 of the lights".
 """
 
 from __future__ import annotations
