@@ -51,6 +51,7 @@ from custom_components.cactus_home.tools import (  # noqa: E402
     CAP_STATE,
     CAP_TEMPERATURE,
     CAP_VOLUME,
+    TOOL_DEFS_BY_NAME,
     DeviceTarget,
     ToolError,
     build_toolset,
@@ -123,12 +124,11 @@ def demo_targets() -> list[DeviceTarget]:
 def show_schemas(toolset) -> None:
     print(f"Compiled {len(toolset.schemas)} tools from {len(toolset.targets)} targets:")
     for schema in toolset.schemas:
-        properties = sorted(schema["parameters"]["properties"])
-        enum = schema["parameters"]["properties"].get("device", {}).get("enum") or schema[
-            "parameters"
-        ]["properties"].get("scene", {}).get("enum")
+        properties = schema["parameters"]["properties"]
+        target_arg = TOOL_DEFS_BY_NAME[schema["name"]].target_arg
+        enum = properties.get(target_arg, {}).get("enum")
         suffix = f" ({len(enum)} names)" if enum else ""
-        print(f"  - {schema['name']}({', '.join(properties)}){suffix}")
+        print(f"  - {schema['name']}({', '.join(sorted(properties))}){suffix}")
     print()
 
 
