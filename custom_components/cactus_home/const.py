@@ -36,6 +36,8 @@ CONF_MAX_STEPS: Final = "max_steps"
 CONF_MAX_NEW_TOKENS: Final = "max_new_tokens"
 CONF_MAX_TARGETS: Final = "max_targets"
 CONF_MAX_ENUM_NAMES: Final = "max_enum_names"
+CONF_MAX_TOOL_NAMES: Final = "max_tool_names"
+CONF_NORMALIZE_NUMBERS: Final = "normalize_numbers"
 CONF_TELEMETRY: Final = "telemetry"
 CONF_THREADS: Final = "threads"
 CONF_STT_KEYWORDS: Final = "stt_keywords"
@@ -75,6 +77,15 @@ DEFAULT_MAX_STEPS: Final = 4
 DEFAULT_MAX_NEW_TOKENS: Final = 256
 DEFAULT_MAX_TARGETS: Final = 200
 DEFAULT_MAX_ENUM_NAMES: Final = 64
+
+# The whole toolset is part of Needle's prompt, so the device names carried by
+# the schemas have a total budget as well as a per-tool ceiling. Overflowing it
+# is what produces a context length error on a large home.
+DEFAULT_MAX_TOOL_NAMES: Final = 120
+
+# Speech recognition returns numbers as words; Needle grounds a numeric
+# argument only when the digits appear in the request.
+DEFAULT_NORMALIZE_NUMBERS: Final = True
 DEFAULT_TELEMETRY: Final = False
 DEFAULT_THREADS: Final = 0
 DEFAULT_STT_KEYWORDS: Final = ""
@@ -127,6 +138,8 @@ DEFAULT_OPTIONS: Final = {
     CONF_MAX_NEW_TOKENS: DEFAULT_MAX_NEW_TOKENS,
     CONF_MAX_TARGETS: DEFAULT_MAX_TARGETS,
     CONF_MAX_ENUM_NAMES: DEFAULT_MAX_ENUM_NAMES,
+    CONF_MAX_TOOL_NAMES: DEFAULT_MAX_TOOL_NAMES,
+    CONF_NORMALIZE_NUMBERS: DEFAULT_NORMALIZE_NUMBERS,
     CONF_TELEMETRY: DEFAULT_TELEMETRY,
     CONF_THREADS: DEFAULT_THREADS,
     CONF_STT_KEYWORDS: DEFAULT_STT_KEYWORDS,

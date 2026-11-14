@@ -43,16 +43,21 @@ from .const import (
     CONF_MAX_ENUM_NAMES,
     CONF_MAX_STEPS,
     CONF_MAX_TARGETS,
+    CONF_MAX_TOOL_NAMES,
     CONF_MIN_CONFIDENCE,
+    CONF_NORMALIZE_NUMBERS,
     DEFAULT_MAX_ENUM_NAMES,
     DEFAULT_MAX_STEPS,
     DEFAULT_MAX_TARGETS,
+    DEFAULT_MAX_TOOL_NAMES,
     DEFAULT_MIN_CONFIDENCE,
+    DEFAULT_NORMALIZE_NUMBERS,
     MODEL_NEEDLE,
     SUPPORTED_LANGUAGES,
 )
 from .entities import async_collect_targets
 from .needle import CactusError, CactusTextAgent
+from .numbers import normalize_spoken_numbers
 from .tools import (
     Action,
     DeviceTarget,
@@ -156,6 +161,7 @@ class CactusConversationAgent(conversation.AbstractConversationAgent):
         self._targets_ttl = float(options.get("target_cache_ttl", 5.0))
         self._last_conversation_id: str | None = None
         self._pending: dict[str, _Pending] = {}
+        self._enums_disabled = False
 
         self._max_steps = int(options.get(CONF_MAX_STEPS, DEFAULT_MAX_STEPS))
         self._min_confidence = float(options.get(CONF_MIN_CONFIDENCE, DEFAULT_MIN_CONFIDENCE))
@@ -220,7 +226,14 @@ class CactusConversationAgent(conversation.AbstractConversationAgent):
         )
         self._toolset = build_toolset(
             targets,
-            max_enum_names=int(self._options.get(CONF_MAX_ENUM_NAMES, DEFAULT_MAX_ENUM_NAMES)),
+            max_enum_names=(
+                0
+                if self._enums_disabled
+                else int(self._options.get(CONF_MAX_ENUM_NAMES, DEFAULT_MAX_ENUM_NAMES))
+            ),
+            max_total_names=int(
+                self._options.get(CONF_MAX_TOOL_NAMES, DEFAULT_MAX_TOOL_NAMES)
+            ),
         )
         self._toolset_built_at = now
         return self._toolset
@@ -238,6 +251,25 @@ class CactusConversationAgent(conversation.AbstractConversationAgent):
                     facts.append(f"device: {name}")
         return "; ".join(facts)
 
+    def _normalize_numbers(
+        self, text: str, user_input: conversation.ConversationInput
+    ) -> str:
+        """Convert spoken number words to digits before the model sees them.
+
+        Speech recognition writes "50%" as "fünfzig Prozent", and Needle grounds
+        a numeric argument only when the digits appear in the request, so the
+        quantity never reached the tool call.
+        """
+        if not self._options.get(CONF_NORMALIZE_NUMBERS, DEFAULT_NORMALIZE_NUMBERS):
+            return text
+
+        configured = self._options.get(CONF_LANGUAGE)
+        language = configured if configured and configured != "auto" else user_input.language
+        normalized = normalize_spoken_numbers(text, language)
+        if normalized != text:
+            _LOGGER.debug("Normalised spoken numbers: %r -> %r", text, normalized)
+        return normalized
+
     # -- the loop -----------------------------------------------------------
     async def _async_converse(
         self, user_input: conversation.ConversationInput, text: str
@@ -252,6 +284,7 @@ class CactusConversationAgent(conversation.AbstractConversationAgent):
                 )
 
             conversation_id = user_input.conversation_id or "default"
+            text = self._normalize_numbers(text, user_input)
 
             pending = self._pending.pop(conversation_id, None)
             if pending is not None:
@@ -277,7 +310,9 @@ class CactusConversationAgent(conversation.AbstractConversationAgent):
         results: list[str] = []
         system = self._system_facts(user_input)
 
-        for _step in range(max(1, self._max_steps)):
+        step = 0
+        retried = False
+        while step < max(1, self._max_steps):
             complete = partial(
                 self._runtime.complete,
                 text,
@@ -288,10 +323,31 @@ class CactusConversationAgent(conversation.AbstractConversationAgent):
             turn = await self.hass.async_add_executor_job(complete)
 
             error = turn.get("error")
+            if error and not retried and not self._enums_disabled:
+                # The toolset is part of Needle's prompt, so an oversized
+                # toolset surfaces as an engine error rather than a refusal.
+                # Retry once with the name lists removed: the resolver still
+                # finds devices by itself, so the command can still be honoured.
+                retried = True
+                self._enums_disabled = True
+                self._toolset = None
+                toolset = self._build_toolset()
+                _LOGGER.warning(
+                    "Needle reported %r; retrying with the device name lists removed",
+                    error,
+                )
+                continue
+
             if error:
                 _LOGGER.warning("Needle reported an error: %s (%s)", error, turn.get("error_code"))
-                results.append(f"The local model reported a problem: {error}")
+                results.append(
+                    f"The local model reported a problem: {error}. If that mentions the "
+                    "context length, reduce the entities exposed to Assist or lower the "
+                    "device name budget in the options."
+                )
                 break
+
+            step += 1
 
             calls = list(turn.get("function_calls") or [])
             suppressed = list(turn.get("suppressed_calls") or [])

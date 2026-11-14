@@ -83,10 +83,12 @@ class FakeRuntime:
     def __init__(self, turns):
         self.turns = list(turns)
         self.seen = []
+        self.schema_calls = []
         self.resets = 0
 
     def complete(self, text, *, schemas, signature, system=None):
         self.seen.append(text)
+        self.schema_calls.append(list(schemas))
         if self.turns:
             return self.turns.pop(0)
         return {"type": "respond", "function_calls": []}
@@ -112,22 +114,23 @@ def make_toolset():
     )
 
 
-def make_agent(runtime, states=None):
+def make_agent(runtime, states=None, *, stub_toolset=True):
     hass = FakeHass(states or {"light.kitchen_light": FakeState("on")})
     agent = CactusConversationAgent(hass, None, dict(OPTIONS), runtime)
-    toolset = make_toolset()
-    agent._build_toolset = lambda: toolset  # bypass the registry glue
+    if stub_toolset:
+        toolset = make_toolset()
+        agent._build_toolset = lambda: toolset  # bypass the registry glue
     return agent, hass
 
 
-def user_input(text, conversation_id="conv-1"):
+def user_input(text, conversation_id="conv-1", language="en"):
     return conversation.ConversationInput(
         text=text,
         context=Context(),
         conversation_id=conversation_id,
         device_id=None,
         satellite_id=None,
-        language="en",
+        language=language,
         agent_id="test-agent",
     )
 
@@ -309,3 +312,91 @@ def test_get_state_answers_from_the_state_machine():
 def test_supported_languages_are_the_model_languages():
     agent, _ = make_agent(FakeRuntime([]))
     assert agent.supported_languages == ["en", "de", "fr", "es", "it", "nl", "pl"]
+
+
+# --------------------------------------------------------------------------
+# Spoken numbers
+# --------------------------------------------------------------------------
+def test_spoken_number_words_reach_the_model_as_digits():
+    runtime = FakeRuntime([RESPOND_TURN])
+    agent, _ = make_agent(runtime)
+
+    asyncio.run(
+        agent.async_process(
+            user_input("stelle das licht auf fünfzig Prozent", language="de")
+        )
+    )
+
+    assert runtime.seen[0] == "stelle das licht auf 50 Prozent"
+
+
+def test_number_normalisation_is_language_scoped():
+    runtime = FakeRuntime([RESPOND_TURN])
+    agent, _ = make_agent(runtime)
+
+    # An English pipeline must not convert German number words.
+    asyncio.run(agent.async_process(user_input("fünfzig Prozent", language="en")))
+
+    assert runtime.seen[0] == "fünfzig Prozent"
+
+
+# --------------------------------------------------------------------------
+# Engine error: the toolset is part of the prompt
+# --------------------------------------------------------------------------
+CONTEXT_ERROR_TURN = {
+    "type": "call",
+    "error": "context length exceeded",
+    "error_code": "context_length",
+    "function_calls": [],
+}
+
+
+def device_enums(schemas):
+    return [
+        schema["parameters"]["properties"]["device"].get("enum")
+        for schema in schemas
+        if "device" in schema["parameters"]["properties"]
+    ]
+
+
+def test_an_engine_error_retries_once_without_name_lists(monkeypatch):
+    import custom_components.cactus_home.conversation as conversation_module
+
+    monkeypatch.setattr(
+        conversation_module,
+        "async_collect_targets",
+        lambda hass, options: [
+            DeviceTarget(
+                target_id="light.kitchen_light",
+                name="Kitchen Light",
+                domain="light",
+                entity_ids=("light.kitchen_light",),
+                capabilities=frozenset({CAP_STATE, CAP_BRIGHTNESS, CAP_QUERY}),
+            )
+        ],
+    )
+
+    runtime = FakeRuntime([CONTEXT_ERROR_TURN, CALL_TURN, RESPOND_TURN])
+    agent, hass = make_agent(runtime, stub_toolset=False)
+
+    result = asyncio.run(agent.async_process(user_input("turn on the kitchen light")))
+
+    # The first toolset carried name lists, the retry carried none.
+    assert len(runtime.schema_calls) == 3
+    assert all(enum for enum in device_enums(runtime.schema_calls[0]))
+    assert all(enum is None for enum in device_enums(runtime.schema_calls[1]))
+
+    assert agent._enums_disabled is True
+    assert hass.services.calls == [("light", "turn_on", {"entity_id": ["light.kitchen_light"]})]
+    assert spoken(result) == "Turned on Kitchen Light."
+
+
+def test_a_persistent_engine_error_explains_the_context_budget():
+    runtime = FakeRuntime([CONTEXT_ERROR_TURN, CONTEXT_ERROR_TURN])
+    agent, hass = make_agent(runtime)
+
+    result = asyncio.run(agent.async_process(user_input("turn on the kitchen light")))
+
+    assert "context length" in spoken(result)
+    assert "device name budget" in spoken(result)
+    assert hass.services.calls == []

@@ -24,7 +24,8 @@ import unicodedata
 from dataclasses import dataclass, field
 from typing import Any, Final, Iterable, Mapping, Sequence
 
-from .const import DOMAIN_WORDS
+from .const import DEFAULT_MAX_TOOL_NAMES, DOMAIN_WORDS
+from .numbers import fold_numbers
 
 # --------------------------------------------------------------------------
 # Capabilities
@@ -286,8 +287,13 @@ COMPOUND_RATIO_FLOOR: Final = 0.9
 
 
 def normalize_name(value: str) -> str:
-    """Fold a spoken name into a comparable key."""
-    text = unicodedata.normalize("NFKD", value or "")
+    """Fold a spoken name into a comparable key.
+
+    Number words are folded first, while umlauts are still intact, so an alias
+    like "Licht drei" and a name like "Licht 3" produce the same key.
+    """
+    text = fold_numbers(value or "")
+    text = unicodedata.normalize("NFKD", text)
     text = "".join(ch for ch in text if not unicodedata.combining(ch))
     text = text.casefold()
     text = re.sub(r"[^\w\s]", " ", text)
@@ -460,6 +466,14 @@ def _target_property(
     max_enum_names: int,
     description: str,
 ) -> dict[str, Any]:
+    """Build the target argument for one tool.
+
+    The grammar only permits a name that the schema lists, so a list holding
+    some but not all of the devices could force the model to answer with a
+    device the user never mentioned. When the names do not all fit, the list is
+    dropped entirely and the argument becomes free text, which the resolver
+    matches against the registry. Never truncate here.
+    """
     prop: dict[str, Any] = {"type": "string", "description": description}
     if max_enum_names <= 0:
         return prop
@@ -479,12 +493,15 @@ def build_toolset(
     targets: Sequence[DeviceTarget],
     *,
     max_enum_names: int = 64,
+    max_total_names: int = DEFAULT_MAX_TOOL_NAMES,
 ) -> Toolset:
     """Compile device targets into Needle tool schemas.
 
     Capping how many entities reach the toolset is the registry-discovery
     concern of :mod:`.entities`, not of schema compilation, so it is not done
-    here.
+    here. ``max_total_names`` is different: it budgets the device names carried
+    by the schemas as a whole, because Needle reads the entire toolset as part
+    of its prompt and a large home can overflow its context otherwise.
     """
     limited = tuple(targets)
 
@@ -508,17 +525,30 @@ def build_toolset(
             elif holder is None and key not in ambiguous:
                 index[key] = target
 
-    schemas: list[dict[str, Any]] = []
+    emitted: list[tuple[ToolDef, Sequence[DeviceTarget]]] = []
     for tool in TOOL_DEFS:
         candidates = by_capability.get(tool.capability or "", []) if tool.capability else limited
-        if not candidates:
-            continue
+        if candidates:
+            emitted.append((tool, candidates))
 
+    enum_cap = max_enum_names
+    if emitted:
+        if max_total_names <= 0:
+            # Same convention as max_enum_names: zero means no name lists.
+            enum_cap = 0
+        else:
+            # The whole toolset is part of the prompt, so the names have to fit
+            # a total budget, not only a per-tool ceiling. Names are shared out
+            # evenly; the resolver still finds anything the enum leaves out.
+            enum_cap = min(max_enum_names, max(0, max_total_names // len(emitted)))
+
+    schemas: list[dict[str, Any]] = []
+    for tool, candidates in emitted:
         properties: dict[str, Any] = {
             tool.target_arg: _target_property(
                 candidates,
                 tool.target_arg,
-                max_enum_names,
+                enum_cap,
                 f"The name of the {tool.target_arg} to act on, exactly as listed.",
             )
         }

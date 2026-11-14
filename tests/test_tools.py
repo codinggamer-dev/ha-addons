@@ -27,6 +27,7 @@ from custom_components.cactus_home.tools import (
     plan_action,
     resolve_target,
     synthesize_groups,
+    TOOL_DEFS_BY_NAME,
 )
 
 ALL_CAPS = frozenset(
@@ -404,3 +405,98 @@ def test_device_keywords_dedupe_case_insensitively_and_skip_short_names():
     ]
 
     assert device_keywords(targets) == ["Lamp"]
+
+
+# --------------------------------------------------------------------------
+# Prompt budget: the whole toolset is part of the model prompt
+# --------------------------------------------------------------------------
+def target_enums(toolset):
+    """Return the device-name enum of every tool that has one."""
+    enums = []
+    for schema in toolset.schemas:
+        arg = TOOL_DEFS_BY_NAME[schema["name"]].target_arg
+        prop = schema["parameters"]["properties"].get(arg, {})
+        if "enum" in prop:
+            enums.append(prop["enum"])
+    return enums
+
+
+def test_total_budget_keeps_lists_that_fit_the_home():
+    targets = [
+        target(f"Lamp {index}", "light", caps={CAP_STATE, CAP_QUERY}) for index in range(30)
+    ]
+
+    toolset = build_toolset(targets, max_enum_names=512, max_total_names=120)
+    enums = target_enums(toolset)
+
+    assert enums, "the tools still carry names"
+    assert sum(len(enum) for enum in enums) <= 120
+    assert all(len(enum) == 30 for enum in enums)
+
+
+def test_total_budget_drops_lists_that_cannot_fit():
+    targets = [
+        target(f"Lamp {index}", "light", caps={CAP_STATE, CAP_QUERY}) for index in range(40)
+    ]
+
+    toolset = build_toolset(targets, max_enum_names=512, max_total_names=20)
+
+    # Two tools, so the cap is ten names each, and forty names cannot fit in
+    # ten. The lists are dropped rather than truncated: see
+    # test_no_partial_name_list_is_ever_emitted.
+    assert target_enums(toolset) == []
+    # The devices are still addressable, the resolver does the matching.
+    assert toolset.resolve("Lamp 37", CAP_STATE).ok
+
+
+def test_no_partial_name_list_is_ever_emitted():
+    """A truncated list would let the model name the wrong device.
+
+    The schema grammar only permits a name that is listed, so a list holding
+    some but not all devices can force the model to answer with a device the
+    user never mentioned. Either every name is listed or none is.
+    """
+    targets = [
+        target(f"Lamp {index}", "light", caps={CAP_STATE, CAP_QUERY}) for index in range(40)
+    ]
+
+    for budget in (0, 5, 20, 39, 79):
+        toolset = build_toolset(targets, max_enum_names=512, max_total_names=budget)
+        for enum in target_enums(toolset):
+            assert len(enum) == 40
+
+    # A budget of eighty names is exactly two tools of forty, so the lists fit.
+    fitting = build_toolset(targets, max_enum_names=512, max_total_names=80)
+    assert all(len(enum) == 40 for enum in target_enums(fitting))
+
+
+def test_zero_total_budget_disables_name_lists():
+    targets = [
+        target(f"Lamp {index}", "light", caps={CAP_STATE, CAP_QUERY}) for index in range(5)
+    ]
+
+    toolset = build_toolset(targets, max_total_names=0)
+
+    assert target_enums(toolset) == []
+    # The devices are still addressable, just not listed in the prompt.
+    assert toolset.resolve("Lamp 3", CAP_STATE).ok
+
+
+def test_per_tool_ceiling_drops_the_list_when_it_cannot_hold_every_name():
+    targets = [
+        target(f"Lamp {index}", "light", caps={CAP_STATE, CAP_QUERY}) for index in range(6)
+    ]
+
+    # A huge total budget means "no total budget" and leaves the per-tool
+    # ceiling as the only constraint.
+    assert target_enums(build_toolset(targets, max_enum_names=4, max_total_names=10**6)) == []
+
+    enums = target_enums(build_toolset(targets, max_enum_names=6, max_total_names=10**6))
+    assert enums
+    assert all(len(enum) == 6 for enum in enums)
+
+
+def test_number_words_are_folded_into_names():
+    """An alias spelled with words matches an entity named with digits."""
+    assert normalize_name("Licht drei") == normalize_name("Licht 3")
+    assert normalize_name("Light three") == normalize_name("Light 3")

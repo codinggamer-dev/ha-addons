@@ -29,9 +29,11 @@ from .const import (
     CONF_MAX_NEW_TOKENS,
     CONF_MAX_STEPS,
     CONF_MAX_TARGETS,
+    CONF_MAX_TOOL_NAMES,
     CONF_MIN_CONFIDENCE,
     CONF_NAME,
     CONF_NEEDLE_WEIGHTS,
+    CONF_NORMALIZE_NUMBERS,
     CONF_STT_KEYWORDS,
     CONF_TARGET_TTL,
     CONF_TELEMETRY,
@@ -69,6 +71,9 @@ def _schema(defaults: dict[str, Any]) -> vol.Schema:
             vol.Required(CONF_ENABLE_STT, default=bool(get(CONF_ENABLE_STT))): cv.boolean,
             vol.Required(CONF_ASSIST_ONLY, default=bool(get(CONF_ASSIST_ONLY))): cv.boolean,
             vol.Required(
+                CONF_NORMALIZE_NUMBERS, default=bool(get(CONF_NORMALIZE_NUMBERS))
+            ): cv.boolean,
+            vol.Required(
                 CONF_ENABLED_DOMAINS, default=list(get(CONF_ENABLED_DOMAINS) or DEFAULT_ENABLED_DOMAINS)
             ): cv.multi_select(_DOMAIN_CHOICES),
             vol.Optional(
@@ -96,6 +101,9 @@ def _schema(defaults: dict[str, Any]) -> vol.Schema:
             vol.Required(
                 CONF_MAX_ENUM_NAMES, default=int(get(CONF_MAX_ENUM_NAMES))
             ): vol.All(vol.Coerce(int), vol.Range(min=0, max=512)),
+            vol.Required(
+                CONF_MAX_TOOL_NAMES, default=int(get(CONF_MAX_TOOL_NAMES))
+            ): vol.All(vol.Coerce(int), vol.Range(min=0, max=2000)),
             vol.Optional(
                 CONF_STT_KEYWORDS, default=str(get(CONF_STT_KEYWORDS) or "")
             ): cv.string,

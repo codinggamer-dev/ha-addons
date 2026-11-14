@@ -91,6 +91,7 @@ The setup form (and later, **Configure** on the integration card) exposes:
 | Enable the Needle 3 conversation agent | on | Register the agent with Assist. |
 | Enable the Whistle speech-to-text engine | on | Expose the STT entity. |
 | Only control entities exposed to Assist | on | Restrict tools to entities you exposed. Strongly recommended. |
+| Convert spoken number words to digits | on | Speech recognition writes `50%` as `fünfzig Prozent`, and Needle grounds a numeric argument only when the digits appear in the request. German and English are supported; other languages pass through untouched. Turn off to send the transcript to the model as-is. |
 | Entity domains to expose as tools | 13 common domains | Which domains become tools (`light`, `switch`, `cover`, …). |
 | Entities to never expose | empty | Comma-separated `entity_id` blocklist. |
 | Path to a tuned Needle `.cact` archive | empty | Use a fine-tuned tool surface instead of base Needle 3. |
@@ -101,6 +102,7 @@ The setup form (and later, **Configure** on the integration card) exposes:
 | Maximum tokens per model turn | `256` | Raise for very large toolsets. |
 | Maximum number of entities compiled into tools | `200` | Hard cap; extras are dropped. |
 | Maximum names listed per tool | `64` | Larger sets fall back to a free-text name argument. `0` disables enums. |
+| Maximum device names across all tools | `120` | The whole toolset is part of Needle's prompt, so the names have a total budget as well as a per-tool ceiling. Divided across the tools. When a list cannot hold every device, it is dropped rather than shortened, because the grammar only allows names that are listed and a partial list could make the model name the wrong device; the resolver still finds anything the list leaves out. `0` disables name lists. This is the dial that fixes a context length error. |
 | Words and names to favour when transcribing | empty | Comma-separated keyword biasing, e.g. `Siobhan, Krzysztof`. Manual entries are kept and take priority over the automatic list below. |
 | Bias speech recognition toward your device names (**experimental**) | off | Passes the names and aliases of your exposed devices to the decoder as keywords, so a compound you say is transcribed the way it is written in Home Assistant. Capped at 32 names of at most 4 words, canonical names before aliases, and never includes synthetic groups. The log reports how many were used and the `auto_keywords` attribute shows the exact list. |
 | Directory to save the last audio clip to | empty | When set, the exact 16 kHz clip handed to Whistle is written to `cactus_last_utterance.wav` there. Debugging only. |
@@ -298,6 +300,7 @@ cactus download whistle
 | `speech-to-text failed` | Every speech-to-text failure is reduced to this one message by Home Assistant, so read the entity's `last_error` attribute or the log line, which always names the cause. 1.0.3 fixed the cause that affected all versions before it: 16-bit audio was rejected by the decoder. The remaining usual reason is that the `whistle.cact` weights never downloaded; restore network access, or pre-download with `cactus download whistle` and point `CACTUS_WHISTLE_WEIGHTS` at the local `whistle.cact`. A failure never disables the conversation agent. |
 | Transcription returns empty | Whistle detects silence/noise and returns `""` by design. Check the microphone and the pipeline's VAD settings. |
 | Transcription invents words for music | Expected. Put a VAD or wake word in front of an always-on microphone. |
+| `The local model reported a problem: …context…` | Needle reads the whole toolset as part of its prompt, so a large home can overflow its context. Lower **Maximum device names across all tools** (or **Maximum names listed per tool**), or expose fewer entities. Since 1.0.6 the integration also retries once with the name lists removed, and keeps them off for the rest of the session if that was the cause, so commands usually still work. |
 | Commands are slow | Lower **Maximum tokens per model turn**, raise **CPU threads**, or reduce **Maximum number of entities**. |
 | Model misses a command it should know | Likely fit, not a bug: Needle 3's base weights do not pass every vendor acceptance suite. Fine-tune it (see below) or trim the toolset. |
 
