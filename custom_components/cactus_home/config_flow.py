@@ -18,6 +18,7 @@ from homeassistant.helpers import config_validation as cv
 from .const import (
     ALL_CONTROLLABLE_DOMAINS,
     CONF_ASSIST_ONLY,
+    CONF_AUTO_STT_KEYWORDS,
     CONF_DEBUG_AUDIO_DIR,
     CONF_ENABLED_DOMAINS,
     CONF_ENABLE_CONVERSATION,
@@ -98,6 +99,9 @@ def _schema(defaults: dict[str, Any]) -> vol.Schema:
             vol.Optional(
                 CONF_STT_KEYWORDS, default=str(get(CONF_STT_KEYWORDS) or "")
             ): cv.string,
+            vol.Required(
+                CONF_AUTO_STT_KEYWORDS, default=bool(get(CONF_AUTO_STT_KEYWORDS))
+            ): cv.boolean,
             vol.Optional(
                 CONF_DEBUG_AUDIO_DIR, default=str(get(CONF_DEBUG_AUDIO_DIR) or "")
             ): cv.string,

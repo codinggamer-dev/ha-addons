@@ -829,6 +829,52 @@ def _common_capabilities(members: Sequence[DeviceTarget]) -> frozenset[str]:
     return frozenset(common) if common else frozenset({CAP_QUERY})
 
 
+def device_keywords(
+    targets: Sequence[DeviceTarget],
+    *,
+    limit: int = 32,
+    max_words: int = 4,
+) -> list[str]:
+    """Collect device names to bias speech recognition toward.
+
+    Canonical names come before aliases, so a capped list is spent on real names
+    rather than on secondary spellings. Synthetic groups are skipped: a phrase
+    like "All lights" is a command, not something a user says in place of a
+    device name, and it would dilute the bias.
+    """
+
+    def usable(name: str) -> str | None:
+        cleaned = (name or "").strip()
+        if len(cleaned) < 2 or len(cleaned.split()) > max_words:
+            return None
+        return cleaned
+
+    seen: set[str] = set()
+    out: list[str] = []
+
+    def add(name: str) -> None:
+        cleaned = usable(name)
+        if cleaned is None:
+            return
+        key = cleaned.casefold()
+        if key in seen:
+            return
+        seen.add(key)
+        out.append(cleaned)
+
+    entities = [target for target in targets if target.kind == "entity"]
+    for target in entities:
+        add(target.name)
+        if len(out) >= limit:
+            return out[:limit]
+    for target in entities:
+        for alternate in target.names:
+            add(alternate)
+            if len(out) >= limit:
+                return out[:limit]
+    return out
+
+
 def synthesize_groups(
     targets: Sequence[DeviceTarget],
     *,

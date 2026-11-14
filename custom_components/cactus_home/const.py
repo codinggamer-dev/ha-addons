@@ -39,6 +39,7 @@ CONF_MAX_ENUM_NAMES: Final = "max_enum_names"
 CONF_TELEMETRY: Final = "telemetry"
 CONF_THREADS: Final = "threads"
 CONF_STT_KEYWORDS: Final = "stt_keywords"
+CONF_AUTO_STT_KEYWORDS: Final = "auto_stt_keywords"
 CONF_DEBUG_AUDIO_DIR: Final = "debug_audio_dir"
 CONF_TARGET_TTL: Final = "target_cache_ttl"
 
@@ -78,6 +79,14 @@ DEFAULT_TELEMETRY: Final = False
 DEFAULT_THREADS: Final = 0
 DEFAULT_STT_KEYWORDS: Final = ""
 DEFAULT_TARGET_TTL: Final = 5.0
+
+# Experimental: bias the speech decoder toward the names of the devices in this
+# home. Off by default. The cap keeps the bias from diluting, and places that
+# are not device names are left out entirely.
+DEFAULT_AUTO_STT_KEYWORDS: Final = False
+AUTO_STT_KEYWORD_LIMIT: Final = 32
+AUTO_STT_KEYWORD_MAX_WORDS: Final = 4
+STT_KEYWORD_CACHE_TTL: Final = 30.0
 
 # Confidence floor for emitting a deterministic action without asking first.
 CONFIDENCE_CONFIRM_FLOOR: Final = 0.1
@@ -121,6 +130,7 @@ DEFAULT_OPTIONS: Final = {
     CONF_TELEMETRY: DEFAULT_TELEMETRY,
     CONF_THREADS: DEFAULT_THREADS,
     CONF_STT_KEYWORDS: DEFAULT_STT_KEYWORDS,
+    CONF_AUTO_STT_KEYWORDS: DEFAULT_AUTO_STT_KEYWORDS,
     CONF_DEBUG_AUDIO_DIR: "",
     CONF_TARGET_TTL: DEFAULT_TARGET_TTL,
 }

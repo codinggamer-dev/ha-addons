@@ -40,16 +40,18 @@ class FakeEntry:
 
 
 class FakeTranscriber:
-    """Records the samples the entity hands to the engine."""
+    """Records what the entity hands to the engine."""
 
     def __init__(self, text="understood"):
         self.text = text
         self.received = None
         self.languages: list[str | None] = []
+        self.keyword_sets: list[list[str] | None] = []
 
-    def transcribe(self, samples, language=None):
+    def transcribe(self, samples, language=None, keywords=None):
         self.received = samples
         self.languages.append(language)
+        self.keyword_sets.append(list(keywords) if keywords else None)
         return self.text
 
 
@@ -130,6 +132,54 @@ def test_entity_records_a_decode_failure(monkeypatch):
 
     assert result.result == stt_component.SpeechResultState.ERROR
     assert entity.extra_state_attributes["last_error"] == "simulated decode failure"
+
+
+def test_no_keywords_are_passed_by_default():
+    transcriber = FakeTranscriber()
+    entity = make_entity(transcriber=transcriber)
+
+    async def stream():
+        yield pcm16_bytes(0, 1)
+
+    asyncio.run(entity.async_process_audio_stream(metadata(), stream()))
+
+    assert transcriber.keyword_sets == [None]
+    assert entity.extra_state_attributes["auto_keywords_enabled"] is False
+
+
+def test_auto_keywords_bias_the_decoder_when_the_option_is_on(monkeypatch):
+    import custom_components.cactus_home.stt as stt_module
+    from custom_components.cactus_home.tools import CAP_QUERY, CAP_STATE, DeviceTarget
+
+    monkeypatch.setattr(
+        stt_module,
+        "async_collect_targets",
+        lambda hass, options: [
+            DeviceTarget(
+                target_id="light.lichtstreifen",
+                name="Lichtstreifen",
+                domain="light",
+                entity_ids=("light.lichtstreifen",),
+                capabilities=frozenset({CAP_STATE, CAP_QUERY}),
+            )
+        ],
+    )
+
+    transcriber = FakeTranscriber()
+    entity = make_entity(
+        {"auto_stt_keywords": True, "stt_keywords": "wecker"}, transcriber=transcriber
+    )
+
+    async def stream():
+        yield pcm16_bytes(0, 1)
+
+    result = asyncio.run(entity.async_process_audio_stream(metadata(), stream()))
+
+    assert result.text == "understood"
+    # Manual keywords first, then the device names of this home.
+    assert transcriber.keyword_sets[-1] == ["wecker", "Lichtstreifen"]
+    assert entity.extra_state_attributes["auto_keywords_enabled"] is True
+    assert "Lichtstreifen" in entity.extra_state_attributes["auto_keywords"]
 
 
 @pytest.mark.parametrize(

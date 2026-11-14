@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 from typing import Any
 
 from homeassistant.components.stt import (
@@ -33,18 +34,29 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from . import CactusHomeData
 from .audio import AudioFormatError, to_whistle_samples, write_wav16
 from .const import (
+    AUTO_STT_KEYWORD_LIMIT,
+    AUTO_STT_KEYWORD_MAX_WORDS,
+    CONF_ASSIST_ONLY,
+    CONF_AUTO_STT_KEYWORDS,
     CONF_DEBUG_AUDIO_DIR,
+    CONF_ENABLED_DOMAINS,
+    CONF_EXCLUDE_ENTITIES,
     CONF_LANGUAGE,
+    CONF_MAX_TARGETS,
     CONF_STT_KEYWORDS,
     CONF_WHISTLE_WEIGHTS,
     DEFAULT_LANGUAGE,
+    DEFAULT_MAX_TARGETS,
     DOMAIN,
     MANUFACTURER,
     MODEL_WHISTLE,
     NAME,
+    STT_KEYWORD_CACHE_TTL,
     SUPPORTED_LANGUAGES,
 )
+from .entities import async_collect_targets
 from .needle import CactusError
+from .tools import device_keywords
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -118,6 +130,8 @@ class CactusWhistleSTTEntity(SpeechToTextEntity):
         self._entry = entry
         self._data = data
         self._last_error: str | None = None
+        self._auto_keywords_cache: list[str] | None = None
+        self._auto_keywords_at = 0.0
         self._attr_unique_id = f"{entry.entry_id}_{MODEL_WHISTLE.lower()}"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.entry_id)},
@@ -217,9 +231,10 @@ class CactusWhistleSTTEntity(SpeechToTextEntity):
         )
 
         transcriber = self._data.transcriber
+        keywords = self._transcription_keywords()
         try:
             text = await self.hass.async_add_executor_job(
-                transcriber.transcribe, samples, language
+                transcriber.transcribe, samples, language, keywords
             )
         except CactusError as err:
             self._record_error(str(err))
@@ -250,6 +265,58 @@ class CactusWhistleSTTEntity(SpeechToTextEntity):
             return str(configured)
         return _base_language(metadata_language)
 
+    def _transcription_keywords(self) -> list[str] | None:
+        """Manual keywords first, then device names when the option is on."""
+        combined = list(_parse_keywords(self._data.options.get(CONF_STT_KEYWORDS)))
+        if self._data.options.get(CONF_AUTO_STT_KEYWORDS):
+            combined.extend(self._auto_keywords())
+
+        seen: set[str] = set()
+        unique: list[str] = []
+        for name in combined:
+            key = name.casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            unique.append(name)
+        return unique or None
+
+    def _auto_keywords(self) -> list[str]:
+        """Device names for this home, cached briefly.
+
+        Experimental. Any failure here is swallowed: a bias list is a nice to
+        have and must never cost the user a voice command.
+        """
+        if self._auto_keywords_cache is not None and (
+            time.monotonic() - self._auto_keywords_at < STT_KEYWORD_CACHE_TTL
+        ):
+            return self._auto_keywords_cache
+
+        options = self._data.options
+        try:
+            targets = async_collect_targets(
+                self.hass,
+                {
+                    "enabled_domains": options.get(CONF_ENABLED_DOMAINS),
+                    "exclude_entities": options.get(CONF_EXCLUDE_ENTITIES),
+                    "assist_only": options.get(CONF_ASSIST_ONLY, True),
+                    "max_targets": options.get(CONF_MAX_TARGETS, DEFAULT_MAX_TARGETS),
+                },
+            )
+        except Exception:  # noqa: BLE001 - never fail a command over a bias list
+            _LOGGER.exception("Could not collect device names for keyword biasing")
+            return []
+
+        names = device_keywords(
+            targets,
+            limit=AUTO_STT_KEYWORD_LIMIT,
+            max_words=AUTO_STT_KEYWORD_MAX_WORDS,
+        )
+        self._auto_keywords_cache = names
+        self._auto_keywords_at = time.monotonic()
+        _LOGGER.debug("Biasing speech recognition toward %d device names", len(names))
+        return names
+
     def _record_error(self, message: str | None) -> None:
         """Keep the last failure on the entity so the UI can show it.
 
@@ -268,6 +335,8 @@ class CactusWhistleSTTEntity(SpeechToTextEntity):
         return {
             "weights": self._data.options.get(CONF_WHISTLE_WEIGHTS) or "base whistle.cact",
             "keywords": _parse_keywords(self._data.options.get(CONF_STT_KEYWORDS)),
+            "auto_keywords_enabled": bool(self._data.options.get(CONF_AUTO_STT_KEYWORDS)),
+            "auto_keywords": self._auto_keywords_cache or [],
             "debug_audio_dir": self._data.options.get(CONF_DEBUG_AUDIO_DIR) or None,
             "engine_kwargs": list(getattr(self._data.transcriber, "last_kwargs", []) or []),
             "last_error": self._last_error,

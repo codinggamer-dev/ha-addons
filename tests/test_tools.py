@@ -21,6 +21,7 @@ from custom_components.cactus_home.tools import (
     ResolutionError,
     UnknownToolError,
     build_toolset,
+    device_keywords,
     fallback_parse,
     normalize_name,
     plan_action,
@@ -360,3 +361,46 @@ def test_group_name_collision_is_skipped():
         target("Counter", "light", area="Kitchen"),
     ]
     assert "Kitchen lights" not in {group.name for group in synthesize_groups(members)}
+
+
+# --------------------------------------------------------------------------
+# Keyword biasing for speech recognition
+# --------------------------------------------------------------------------
+def test_device_keywords_take_canonical_names_before_aliases():
+    targets = [
+        target("Lichtstreifen", "light", caps={CAP_STATE, CAP_QUERY}, names=("der streifen",)),
+        target("Stehlampe", "light", caps={CAP_STATE, CAP_QUERY}, names=("die lampe",)),
+    ]
+
+    assert device_keywords(targets, limit=2) == ["Lichtstreifen", "Stehlampe"]
+
+
+def test_device_keywords_are_capped():
+    targets = [target(f"Lamp {index}", "light", caps={CAP_STATE, CAP_QUERY}) for index in range(10)]
+
+    assert len(device_keywords(targets, limit=3)) == 3
+
+
+def test_device_keywords_skip_groups_and_long_names():
+    grouped = DeviceTarget(
+        target_id="group:all:light",
+        name="All lights",
+        domain="light",
+        entity_ids=("light.a",),
+        capabilities=frozenset({CAP_QUERY}),
+        kind="group",
+    )
+    verbose = target(
+        "The very long descriptive name of a lamp", "light", caps={CAP_STATE, CAP_QUERY}
+    )
+
+    assert device_keywords([grouped, verbose], max_words=4) == []
+
+
+def test_device_keywords_dedupe_case_insensitively_and_skip_short_names():
+    targets = [
+        target("Lamp", "light", caps={CAP_STATE, CAP_QUERY}, names=("lamp",)),
+        target("A", "light", caps={CAP_STATE, CAP_QUERY}),
+    ]
+
+    assert device_keywords(targets) == ["Lamp"]

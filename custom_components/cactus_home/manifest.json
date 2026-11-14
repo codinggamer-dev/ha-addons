@@ -10,5 +10,5 @@
   "issue_tracker": "https://github.com/codinggamer-dev/ha-addons/issues",
   "loggers": ["cactus", "custom_components.cactus_home"],
   "requirements": ["cactus-compute>=4.2"],
-  "version": "1.0.4"
+  "version": "1.0.5"
 }

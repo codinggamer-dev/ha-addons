@@ -280,13 +280,15 @@ class CactusTranscriber:
                 self._params = frozenset(parameters)
         return self._params
 
-    def _run_transcribe(self, samples, language: str | None) -> str:
+    def _run_transcribe(
+        self, samples, language: str | None, keywords: Sequence[str] | None = None
+    ) -> str:
         """One engine call, using only arguments the engine accepts."""
         assert self._cactus is not None
         accepted = self._accepted_kwargs()
         wanted: dict[str, Any] = {
             "language": language,
-            "keywords": self._keywords,
+            "keywords": self._keywords if keywords is None else list(keywords),
             "weights": self._weights,
         }
         kwargs = {key: value for key, value in wanted.items() if key in accepted}
@@ -299,12 +301,21 @@ class CactusTranscriber:
             return result.strip()
         raise CactusRuntimeError(f"unexpected Whistle response: {result!r}")
 
-    def transcribe(self, samples, language: str | None = None) -> str:
-        """Transcribe 16 kHz mono float samples and return the text."""
+    def transcribe(
+        self,
+        samples,
+        language: str | None = None,
+        keywords: Sequence[str] | None = None,
+    ) -> str:
+        """Transcribe 16 kHz mono float samples and return the text.
+
+        ``keywords`` overrides the configured bias for this call, which is how
+        the STT entity passes in the device names of this home.
+        """
         self.ensure_loaded()
         with self._lock:
             try:
-                return self._run_transcribe(samples, language)
+                return self._run_transcribe(samples, language, keywords)
             except CactusRuntimeError:
                 raise
             except Exception as err:

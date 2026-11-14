@@ -63,6 +63,34 @@ def patch_engine(monkeypatch, engine):
     monkeypatch.setattr(needle, "load_cactus", lambda telemetry=False: engine)
 
 
+def test_configured_keywords_are_used_when_no_override_is_given(monkeypatch):
+    engine = FakeEngine()
+    patch_engine(monkeypatch, engine)
+
+    needle.CactusTranscriber(keywords=["configured"]).transcribe(SAMPLES, "de")
+
+    assert engine.kwarg_sets[0]["keywords"] == ["configured"]
+
+
+def test_per_call_keywords_override_the_configured_bias(monkeypatch):
+    engine = FakeEngine()
+    patch_engine(monkeypatch, engine)
+
+    transcriber = needle.CactusTranscriber(keywords=["configured"])
+    transcriber.transcribe(SAMPLES, "de", ["Lichtstreifen", "Stehlampe"])
+
+    assert engine.kwarg_sets[0]["keywords"] == ["Lichtstreifen", "Stehlampe"]
+
+
+def test_per_call_keywords_are_dropped_on_engines_without_that_argument(monkeypatch):
+    engine = StrictEngine()
+    patch_engine(monkeypatch, engine)
+
+    needle.CactusTranscriber().transcribe(SAMPLES, "de", ["Lichtstreifen"])
+
+    assert engine.seen == [{"language": "de"}]
+
+
 def test_transcribe_returns_text(monkeypatch):
     patch_engine(monkeypatch, FakeEngine(text="turn on the light"))
 
